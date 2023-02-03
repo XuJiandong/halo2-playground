@@ -65,7 +65,7 @@ impl<F: FieldExt> Circuit<F> for DefaultCircuit<F> {
             |mut region| region.assign_advice(|| "private input", config.advice[1], 0, || self.b),
         )?;
         let c = layouter.assign_region(
-            || "name",
+            || "a * b",
             |mut region: Region<'_, F>| {
                 config.s_mul.enable(&mut region, 0)?;
                 a.copy_advice(|| "lhs", &mut region, config.advice[0], 0)?;
@@ -78,6 +78,26 @@ impl<F: FieldExt> Circuit<F> for DefaultCircuit<F> {
         Ok(())
     }
 }
+
+#[cfg(feature = "dev-graph")]
+fn render<F: FieldExt>(circuit: &impl Circuit<F>) {
+    use plotters::prelude::*;
+    let root = SVGBackend::new("multiplication.svg", (1024, 768)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+    let root = root
+        .titled("Example Circuit Layout", ("sans-serif", 20))
+        .unwrap();
+
+    halo2_proofs::dev::CircuitLayout::default()
+        .show_labels(true)
+        .mark_equality_cells(true)
+        .show_equality_constraints(true)
+        .render(4, circuit, &root)
+        .unwrap();
+}
+
+#[cfg(not(feature = "dev-graph"))]
+fn render<F: FieldExt>(_: &impl Circuit<F>) {}
 
 fn main() {
     let dummy = Fp::from(0);
@@ -96,4 +116,5 @@ fn main() {
 
     let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
+    render(&circuit);
 }
