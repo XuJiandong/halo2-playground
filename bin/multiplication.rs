@@ -2,10 +2,27 @@ use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, SimpleFloorPlanner, Value},
     dev::MockProver,
-    halo2curves::pasta::Fp,
-    plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Instance, Selector},
-    poly::Rotation,
+    halo2curves::bn256::{Bn256, Fr, G1Affine},
+    plonk::{
+        create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
+        ConstraintSystem, Error, Instance, Selector,
+    },
+    poly::{
+        commitment::ParamsProver,
+        kzg::{
+            commitment::{KZGCommitmentScheme, ParamsKZG, ParamsVerifierKZG},
+            multiopen::{ProverSHPLONK, VerifierSHPLONK},
+            strategy::SingleStrategy,
+        },
+        Rotation,
+    },
+    transcript::{
+        Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
+    },
 };
+
+use rand::SeedableRng;
+use rand_xorshift::XorShiftRng;
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -99,13 +116,63 @@ fn render<F: FieldExt>(circuit: &impl Circuit<F>) {
 #[cfg(not(feature = "dev-graph"))]
 fn render<F: FieldExt>(_: &impl Circuit<F>) {}
 
+fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
+    let k = 4;
+    let mut rng = XorShiftRng::from_seed([
+        0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+        0xe5,
+    ]);
+    let general_params = ParamsKZG::<Bn256>::setup(k, &mut rng);
+    let verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
+
+    let vk = keygen_vk(&general_params, &circuit).expect("keygen_vk");
+    let pk = keygen_pk(&general_params, vk, &circuit).expect("keygen_pk");
+
+    let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
+    create_proof::<
+        KZGCommitmentScheme<Bn256>,
+        ProverSHPLONK<'_, Bn256>,
+        Challenge255<G1Affine>,
+        XorShiftRng,
+        Blake2bWrite<Vec<u8>, G1Affine, Challenge255<G1Affine>>,
+        DefaultCircuit<Fr>,
+    >(
+        &general_params,
+        &pk,
+        &[circuit],
+        &[public_inputs],
+        rng,
+        &mut transcript,
+    )
+    .expect("create_proof");
+    let proof = transcript.finalize();
+
+    // verifier
+    let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
+    let strategy = SingleStrategy::new(&general_params);
+    verify_proof::<
+        KZGCommitmentScheme<Bn256>,
+        VerifierSHPLONK<'_, Bn256>,
+        Challenge255<G1Affine>,
+        Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+        SingleStrategy<'_, Bn256>,
+    >(
+        &verifier_params,
+        pk.get_vk(),
+        strategy,
+        &[public_inputs],
+        &mut verifier_transcript,
+    )
+    .expect("verify_proof");
+}
+
 fn main() {
-    let dummy = Fp::from(0);
+    let dummy = Fr::from(0);
 
     let k = 4;
 
-    let a = Fp::from(3);
-    let b = Fp::from(5);
+    let a = Fr::from(3);
+    let b = Fr::from(5);
     let c = a * b;
 
     let circuit = DefaultCircuit {
@@ -113,8 +180,9 @@ fn main() {
         b: Value::known(b),
     };
     let public_inputs = vec![dummy, c];
-
     let prover = MockProver::run(k, &circuit, vec![public_inputs.clone()]).unwrap();
     assert_eq!(prover.verify(), Ok(()));
     render(&circuit);
+
+    prove_and_verify(circuit, &[&[dummy, c]]);
 }
