@@ -8,7 +8,7 @@ use halo2_proofs::{
         ConstraintSystem, Error, Instance, Selector,
     },
     poly::{
-        commitment::ParamsProver,
+        commitment::{Params, ParamsProver},
         kzg::{
             commitment::{KZGCommitmentScheme, ParamsKZG, ParamsVerifierKZG},
             multiopen::{ProverSHPLONK, VerifierSHPLONK},
@@ -117,7 +117,7 @@ fn render<F: FieldExt>(circuit: &impl Circuit<F>) {
 fn render<F: FieldExt>(_: &impl Circuit<F>) {}
 
 fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
-    let k = 4;
+    let k = 10;
     let mut rng = XorShiftRng::from_seed([
         0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
         0xe5,
@@ -146,6 +146,16 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     )
     .expect("create_proof");
     let proof = transcript.finalize();
+    let mut verifier_params_buf = vec![];
+    verifier_params
+        .write(&mut verifier_params_buf)
+        .expect("write");
+    let mut vk_buf = vec![];
+    pk.get_vk().write(&mut vk_buf).expect("write");
+
+    println!("proof length : {}", proof.len());
+    println!("verifier parameters length : {}", verifier_params_buf.len());
+    println!("vk length: {}", vk_buf.len());
 
     // verifier
     let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
