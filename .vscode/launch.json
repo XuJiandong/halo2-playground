@@ -1,0 +1,44 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'multiplication'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=multiplication",
+                    "--package=halo2-playground"
+                ],
+                "filter": {
+                    "name": "multiplication",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'hash'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=hash",
+                    "--package=halo2-playground"
+                ],
+                "filter": {
+                    "name": "hash",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+    ]
+}
