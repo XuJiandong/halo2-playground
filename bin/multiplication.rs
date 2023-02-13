@@ -1,4 +1,4 @@
-use halo2_playground::{commit_instances, GOD_PRIVATE_KEY};
+use halo2_playground::GOD_PRIVATE_KEY;
 
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -150,15 +150,10 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     )
     .expect("create_proof");
     let proof = transcript.finalize();
-    let mut verifier_params_buf = vec![];
-    verifier_params
-        .write(&mut verifier_params_buf)
-        .expect("write");
     let mut vk_buf = vec![];
     pk.get_vk().write(&mut vk_buf).expect("write");
 
     println!("proof length : {}", proof.len());
-    println!("verifier parameters length : {}", verifier_params_buf.len());
     println!("vk length: {}", vk_buf.len());
 
     // original verifier
@@ -182,15 +177,14 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     }
     // modified verifier
     {
-        let instance_commitments = commit_instances::<
-            KZGCommitmentScheme<Bn256>,
-            VerifierSHPLONK<'_, Bn256>,
-        >(&verifier_params, &pk.get_vk(), &[public_inputs])
-        .expect("commit_instance");
-
         let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
         // shrink it
-        verifier_params.shrink(8);
+        verifier_params.shrink(6);
+        let mut verifier_params_buf = vec![];
+        verifier_params
+            .write(&mut verifier_params_buf)
+            .expect("write");
+        println!("verifier parameters length : {}", verifier_params_buf.len());
         let strategy = SingleStrategy::new(&verifier_params);
         verify_proof2::<
             KZGCommitmentScheme<Bn256>,
@@ -202,7 +196,7 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
             &verifier_params,
             pk.get_vk(),
             strategy,
-            instance_commitments,
+            &[public_inputs],
             &mut verifier_transcript,
         )
         .expect("verify_proof2");
