@@ -1,4 +1,4 @@
-use halo2_playground::GOD_PRIVATE_KEY;
+use halo2_playground::{commit_instances, GOD_PRIVATE_KEY};
 
 use halo2_proofs::{
     arithmetic::FieldExt,
@@ -6,7 +6,7 @@ use halo2_proofs::{
     dev::MockProver,
     halo2curves::bn256::{Bn256, Fr, G1Affine},
     plonk::{
-        create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Circuit, Column,
+        create_proof, keygen_pk, keygen_vk, verify_proof, verify_proof2, Advice, Circuit, Column,
         ConstraintSystem, Error, Instance, Selector,
     },
     poly::{
@@ -122,7 +122,8 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     let k = 10;
     let s = Fr::from_u128(GOD_PRIVATE_KEY);
     let general_params = ParamsKZG::<Bn256>::unsafe_setup_with_s(k, s);
-    let verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
+
+    let mut verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
 
     let vk = keygen_vk(&general_params, &circuit).expect("keygen_vk");
     let pk = keygen_pk(&general_params, vk, &circuit).expect("keygen_pk");
@@ -160,23 +161,52 @@ fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     println!("verifier parameters length : {}", verifier_params_buf.len());
     println!("vk length: {}", vk_buf.len());
 
-    // verifier
-    let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
-    let strategy = SingleStrategy::new(&general_params);
-    verify_proof::<
-        KZGCommitmentScheme<Bn256>,
-        VerifierSHPLONK<'_, Bn256>,
-        Challenge255<G1Affine>,
-        Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
-        SingleStrategy<'_, Bn256>,
-    >(
-        &verifier_params,
-        pk.get_vk(),
-        strategy,
-        &[public_inputs],
-        &mut verifier_transcript,
-    )
-    .expect("verify_proof");
+    // original verifier
+    {
+        let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
+        let strategy = SingleStrategy::new(&verifier_params);
+        verify_proof::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierSHPLONK<'_, Bn256>,
+            Challenge255<G1Affine>,
+            Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+            SingleStrategy<'_, Bn256>,
+        >(
+            &verifier_params,
+            pk.get_vk(),
+            strategy,
+            &[public_inputs],
+            &mut verifier_transcript,
+        )
+        .expect("verify_proof");
+    }
+    // modified verifier
+    {
+        let instance_commitments = commit_instances::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierSHPLONK<'_, Bn256>,
+        >(&verifier_params, &pk.get_vk(), &[public_inputs])
+        .expect("commit_instance");
+
+        let mut verifier_transcript = Blake2bRead::<_, G1Affine, Challenge255<_>>::init(&proof[..]);
+        // shrink it
+        verifier_params.shrink(8);
+        let strategy = SingleStrategy::new(&verifier_params);
+        verify_proof2::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierSHPLONK<'_, Bn256>,
+            Challenge255<G1Affine>,
+            Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+            SingleStrategy<'_, Bn256>,
+        >(
+            &verifier_params,
+            pk.get_vk(),
+            strategy,
+            instance_commitments,
+            &mut verifier_transcript,
+        )
+        .expect("verify_proof2");
+    }
 }
 
 fn main() {
