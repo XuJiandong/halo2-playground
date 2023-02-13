@@ -1,0 +1,4 @@
+[submodule "deps/halo2"]
+	path = deps/halo2
+	url = git@github.com:XuJiandong/halo2.git
+	branch = playground

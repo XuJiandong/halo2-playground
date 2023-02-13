@@ -1,3 +1,5 @@
+use halo2_playground::GOD_PRIVATE_KEY;
+
 use halo2_proofs::{
     arithmetic::FieldExt,
     circuit::{Layouter, Region, SimpleFloorPlanner, Value},
@@ -118,16 +120,17 @@ fn render<F: FieldExt>(_: &impl Circuit<F>) {}
 
 fn prove_and_verify(circuit: DefaultCircuit<Fr>, public_inputs: &[&[Fr]]) {
     let k = 10;
-    let mut rng = XorShiftRng::from_seed([
-        0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
-        0xe5,
-    ]);
-    let general_params = ParamsKZG::<Bn256>::setup(k, &mut rng);
+    let s = Fr::from_u128(GOD_PRIVATE_KEY);
+    let general_params = ParamsKZG::<Bn256>::unsafe_setup_with_s(k, s);
     let verifier_params: ParamsVerifierKZG<Bn256> = general_params.verifier_params().clone();
 
     let vk = keygen_vk(&general_params, &circuit).expect("keygen_vk");
     let pk = keygen_pk(&general_params, vk, &circuit).expect("keygen_pk");
 
+    let rng = XorShiftRng::from_seed([
+        0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc,
+        0xe5,
+    ]);
     let mut transcript = Blake2bWrite::<_, G1Affine, Challenge255<_>>::init(vec![]);
     create_proof::<
         KZGCommitmentScheme<Bn256>,
